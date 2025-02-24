@@ -6,11 +6,15 @@ interface registerType {
 }
 
 
-
+interface loginType {
+    email : string;
+    password : string;
+}
 
 
 
 
 export type {
     registerType,
+    loginType
 }

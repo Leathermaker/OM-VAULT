@@ -92,7 +92,7 @@ const Register: React.FC = () => {
         <p className="text-white/50">
           {" "}
           Have an Account ?{" "}
-          <Link to={"/login"} className="text-violet-400 cursor-pointer">
+          <Link to={"/"} className="text-violet-400 cursor-pointer">
             {" "}
             Login{" "}
           </Link>

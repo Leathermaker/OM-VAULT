@@ -1,20 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, } from "electron";
+import { app, BrowserWindow,  ipcMain, } from "electron";
 // import { createRequire } from 'node:module'
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "fs";
+import bcrypt from "bcryptjs";
+
 // const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// The built directory structure
-//
-// ├─┬─┬ dist
-// │ │ └── index.html
-// │ │
-// │ ├─┬ dist-electron
-// │ │ ├── main.js
-// │ │ └── preload.mjs
-// │
 process.env.APP_ROOT = path.join(__dirname, "..");
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
@@ -55,16 +48,15 @@ function createWindow() {
 }
 
 ipcMain.handle("register-data", async (_, data) => {
-  const result = await dialog.showSaveDialog(win!, {
-    title: "Save Registration Data",
-    defaultPath: "C:\\Users\\Public\\Documents\\userData.json", // Default path
-    filters: [{ name: "JSON Files", extensions: ["json"] }],
-  });
-
-  if (!result.canceled && result.filePath) {
+  const salt = await bcrypt.genSalt(9);
+  const hashpassword = await bcrypt.hash(data.password, salt);
+  const registerData = { name: data.name, email: data.email, password: hashpassword, phone: data.phone };
+  const filePath = path.join(app.getPath("userData"), "userData.json");
+  console.log(filePath);
+  if (filePath) {
     try {
-      fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), "utf-8");
-      return { success: true, message: "Data saved successfully!", path: result.filePath };
+      fs.writeFileSync(filePath, JSON.stringify(registerData, null, 2), "utf-8");
+      return { success: true, message: "Data saved successfully!", path: filePath };
     } catch (error) {
       return { success: false, message: "Error saving data", error };
     }
@@ -72,6 +64,28 @@ ipcMain.handle("register-data", async (_, data) => {
     return { success: false, message: "File save canceled" };
   }
 });
+
+ipcMain.handle("login-data", async(_,data)=>{
+  const filePath = path.join(app.getPath("userData"), "userData.json");
+  if (filePath) {
+    try {
+       const storedData  = fs.readFileSync(filePath, "utf-8");
+       const userEmail = data.email;
+       const userPassword = data.password; 
+       const {email, password} = JSON.parse(storedData);
+       const ispasswordmatch = await bcrypt.compare(userPassword, password)
+       if(ispasswordmatch && userEmail == email){
+       return win?.webContents.send("isAuthenticated", true);
+       }else{
+      return  win?.webContents.send("isAuthenticated", false);
+       }
+    } catch (error) {
+      return { success: false, message: "Error saving data", error };
+    }
+  } else {
+    return { success: false, message: "File save canceled" };
+  }
+})
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

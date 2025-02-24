@@ -1,13 +1,14 @@
 import React from 'react'
 import { Route, Routes } from 'react-router-dom'
-import { Login, Register,  } from '../screens'
+import { Home, Login, Register,  } from '../screens'
 
 
 const Router:React.FC = () => {
   return (
     <Routes>
-      <Route  path="/login" element={<Login />} />
-      <Route index path="/" element={<Register />} />
+      <Route index path="/" element={<Login />} />
+      <Route index path="/register" element={<Register />} />
+      <Route index path="/home" element={<Home />} />
     </Routes>
   )
 }
