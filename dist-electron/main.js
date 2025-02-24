@@ -19,8 +19,8 @@ function createWindow() {
     }
   });
   win.setMenu(null);
-  const webContents2 = win.webContents;
-  webContents2.openDevTools();
+  const webContents = win.webContents;
+  webContents.openDevTools();
   win.webContents.on("did-finish-load", () => {
     win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
   });
