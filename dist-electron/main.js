@@ -1,178 +1,229 @@
-import { ipcMain as F, app as E, BrowserWindow as $ } from "electron";
-import { fileURLToPath as Q } from "node:url";
-import l from "node:path";
-import M from "fs";
-import Z from "crypto";
-var C = null;
-function P(d) {
+import { ipcMain, app, BrowserWindow } from "electron";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import fs from "fs";
+import nodeCrypto from "crypto";
+var randomFallback = null;
+function randomBytes(len) {
   try {
-    return crypto.getRandomValues(new Uint8Array(d));
+    return crypto.getRandomValues(new Uint8Array(len));
   } catch {
   }
   try {
-    return Z.randomBytes(d);
+    return nodeCrypto.randomBytes(len);
   } catch {
   }
-  if (!C)
+  if (!randomFallback) {
     throw Error(
       "Neither WebCryptoAPI nor a crypto module is available. Use bcrypt.setRandomFallback to set an alternative"
     );
-  return C(d);
+  }
+  return randomFallback(len);
 }
-function k(d) {
-  C = d;
+function setRandomFallback(random) {
+  randomFallback = random;
 }
-function O(d, a) {
-  if (d = d || j, typeof d != "number")
+function genSaltSync(rounds, seed_length) {
+  rounds = rounds || GENSALT_DEFAULT_LOG2_ROUNDS;
+  if (typeof rounds !== "number")
     throw Error(
-      "Illegal arguments: " + typeof d + ", " + typeof a
+      "Illegal arguments: " + typeof rounds + ", " + typeof seed_length
     );
-  d < 4 ? d = 4 : d > 31 && (d = 31);
-  var e = [];
-  return e.push("$2b$"), d < 10 && e.push("0"), e.push(d.toString()), e.push("$"), e.push(A(P(w), w)), e.join("");
+  if (rounds < 4) rounds = 4;
+  else if (rounds > 31) rounds = 31;
+  var salt = [];
+  salt.push("$2b$");
+  if (rounds < 10) salt.push("0");
+  salt.push(rounds.toString());
+  salt.push("$");
+  salt.push(base64_encode(randomBytes(BCRYPT_SALT_LEN), BCRYPT_SALT_LEN));
+  return salt.join("");
 }
-function W(d, a, e) {
-  if (typeof a == "function" && (e = a, a = void 0), typeof d == "function" && (e = d, d = void 0), typeof d > "u") d = j;
-  else if (typeof d != "number")
-    throw Error("illegal arguments: " + typeof d);
-  function f(x) {
-    h(function() {
+function genSalt(rounds, seed_length, callback) {
+  if (typeof seed_length === "function")
+    callback = seed_length, seed_length = void 0;
+  if (typeof rounds === "function") callback = rounds, rounds = void 0;
+  if (typeof rounds === "undefined") rounds = GENSALT_DEFAULT_LOG2_ROUNDS;
+  else if (typeof rounds !== "number")
+    throw Error("illegal arguments: " + typeof rounds);
+  function _async(callback2) {
+    nextTick(function() {
       try {
-        x(null, O(d));
-      } catch (c) {
-        x(c);
+        callback2(null, genSaltSync(rounds));
+      } catch (err) {
+        callback2(err);
       }
     });
   }
-  if (e) {
-    if (typeof e != "function")
-      throw Error("Illegal callback: " + typeof e);
-    f(e);
+  if (callback) {
+    if (typeof callback !== "function")
+      throw Error("Illegal callback: " + typeof callback);
+    _async(callback);
   } else
-    return new Promise(function(x, c) {
-      f(function(b, r) {
-        if (b) {
-          c(b);
+    return new Promise(function(resolve, reject) {
+      _async(function(err, res) {
+        if (err) {
+          reject(err);
           return;
         }
-        x(r);
+        resolve(res);
       });
     });
 }
-function G(d, a) {
-  if (typeof a > "u" && (a = j), typeof a == "number" && (a = O(a)), typeof d != "string" || typeof a != "string")
-    throw Error("Illegal arguments: " + typeof d + ", " + typeof a);
-  return R(d, a);
+function hashSync(password, salt) {
+  if (typeof salt === "undefined") salt = GENSALT_DEFAULT_LOG2_ROUNDS;
+  if (typeof salt === "number") salt = genSaltSync(salt);
+  if (typeof password !== "string" || typeof salt !== "string")
+    throw Error("Illegal arguments: " + typeof password + ", " + typeof salt);
+  return _hash(password, salt);
 }
-function V(d, a, e, f) {
-  function x(c) {
-    typeof d == "string" && typeof a == "number" ? W(a, function(b, r) {
-      R(d, r, c, f);
-    }) : typeof d == "string" && typeof a == "string" ? R(d, a, c, f) : h(
-      c.bind(
-        this,
-        Error("Illegal arguments: " + typeof d + ", " + typeof a)
-      )
-    );
+function hash(password, salt, callback, progressCallback) {
+  function _async(callback2) {
+    if (typeof password === "string" && typeof salt === "number")
+      genSalt(salt, function(err, salt2) {
+        _hash(password, salt2, callback2, progressCallback);
+      });
+    else if (typeof password === "string" && typeof salt === "string")
+      _hash(password, salt, callback2, progressCallback);
+    else
+      nextTick(
+        callback2.bind(
+          this,
+          Error("Illegal arguments: " + typeof password + ", " + typeof salt)
+        )
+      );
   }
-  if (e) {
-    if (typeof e != "function")
-      throw Error("Illegal callback: " + typeof e);
-    x(e);
+  if (callback) {
+    if (typeof callback !== "function")
+      throw Error("Illegal callback: " + typeof callback);
+    _async(callback);
   } else
-    return new Promise(function(c, b) {
-      x(function(r, t) {
-        if (r) {
-          b(r);
+    return new Promise(function(resolve, reject) {
+      _async(function(err, res) {
+        if (err) {
+          reject(err);
           return;
         }
-        c(t);
+        resolve(res);
       });
     });
 }
-function X(d, a) {
-  for (var e = d.length ^ a.length, f = 0; f < d.length; ++f)
-    e |= d.charCodeAt(f) ^ a.charCodeAt(f);
-  return e === 0;
+function safeStringCompare(known, unknown) {
+  var diff = known.length ^ unknown.length;
+  for (var i = 0; i < known.length; ++i) {
+    diff |= known.charCodeAt(i) ^ unknown.charCodeAt(i);
+  }
+  return diff === 0;
 }
-function S(d, a) {
-  if (typeof d != "string" || typeof a != "string")
-    throw Error("Illegal arguments: " + typeof d + ", " + typeof a);
-  return a.length !== 60 ? !1 : X(
-    G(d, a.substring(0, a.length - 31)),
-    a
+function compareSync(password, hash2) {
+  if (typeof password !== "string" || typeof hash2 !== "string")
+    throw Error("Illegal arguments: " + typeof password + ", " + typeof hash2);
+  if (hash2.length !== 60) return false;
+  return safeStringCompare(
+    hashSync(password, hash2.substring(0, hash2.length - 31)),
+    hash2
   );
 }
-function x0(d, a, e, f) {
-  function x(c) {
-    if (typeof d != "string" || typeof a != "string") {
-      h(
-        c.bind(
+function compare(password, hashValue, callback, progressCallback) {
+  function _async(callback2) {
+    if (typeof password !== "string" || typeof hashValue !== "string") {
+      nextTick(
+        callback2.bind(
           this,
           Error(
-            "Illegal arguments: " + typeof d + ", " + typeof a
+            "Illegal arguments: " + typeof password + ", " + typeof hashValue
           )
         )
       );
       return;
     }
-    if (a.length !== 60) {
-      h(c.bind(this, null, !1));
+    if (hashValue.length !== 60) {
+      nextTick(callback2.bind(this, null, false));
       return;
     }
-    V(
-      d,
-      a.substring(0, 29),
-      function(b, r) {
-        b ? c(b) : c(null, X(r, a));
+    hash(
+      password,
+      hashValue.substring(0, 29),
+      function(err, comp) {
+        if (err) callback2(err);
+        else callback2(null, safeStringCompare(comp, hashValue));
       },
-      f
+      progressCallback
     );
   }
-  if (e) {
-    if (typeof e != "function")
-      throw Error("Illegal callback: " + typeof e);
-    x(e);
+  if (callback) {
+    if (typeof callback !== "function")
+      throw Error("Illegal callback: " + typeof callback);
+    _async(callback);
   } else
-    return new Promise(function(c, b) {
-      x(function(r, t) {
-        if (r) {
-          b(r);
+    return new Promise(function(resolve, reject) {
+      _async(function(err, res) {
+        if (err) {
+          reject(err);
           return;
         }
-        c(t);
+        resolve(res);
       });
     });
 }
-function e0(d) {
-  if (typeof d != "string")
-    throw Error("Illegal arguments: " + typeof d);
-  return parseInt(d.split("$")[2], 10);
+function getRounds(hash2) {
+  if (typeof hash2 !== "string")
+    throw Error("Illegal arguments: " + typeof hash2);
+  return parseInt(hash2.split("$")[2], 10);
 }
-function f0(d) {
-  if (typeof d != "string")
-    throw Error("Illegal arguments: " + typeof d);
-  if (d.length !== 60)
-    throw Error("Illegal hash length: " + d.length + " != 60");
-  return d.substring(0, 29);
+function getSalt(hash2) {
+  if (typeof hash2 !== "string")
+    throw Error("Illegal arguments: " + typeof hash2);
+  if (hash2.length !== 60)
+    throw Error("Illegal hash length: " + hash2.length + " != 60");
+  return hash2.substring(0, 29);
 }
-function a0(d) {
-  if (typeof d != "string")
-    throw Error("Illegal arguments: " + typeof d);
-  return H(d) > 72;
+function truncates(password) {
+  if (typeof password !== "string")
+    throw Error("Illegal arguments: " + typeof password);
+  return utf8Length(password) > 72;
 }
-var h = typeof process < "u" && process && typeof process.nextTick == "function" ? typeof setImmediate == "function" ? setImmediate : process.nextTick : setTimeout;
-function H(d) {
-  for (var a = 0, e = 0, f = 0; f < d.length; ++f)
-    e = d.charCodeAt(f), e < 128 ? a += 1 : e < 2048 ? a += 2 : (e & 64512) === 55296 && (d.charCodeAt(f + 1) & 64512) === 56320 ? (++f, a += 4) : a += 3;
-  return a;
+var nextTick = typeof process !== "undefined" && process && typeof process.nextTick === "function" ? typeof setImmediate === "function" ? setImmediate : process.nextTick : setTimeout;
+function utf8Length(string) {
+  var len = 0, c = 0;
+  for (var i = 0; i < string.length; ++i) {
+    c = string.charCodeAt(i);
+    if (c < 128) len += 1;
+    else if (c < 2048) len += 2;
+    else if ((c & 64512) === 55296 && (string.charCodeAt(i + 1) & 64512) === 56320) {
+      ++i;
+      len += 4;
+    } else len += 3;
+  }
+  return len;
 }
-function c0(d) {
-  for (var a = 0, e, f, x = new Array(H(d)), c = 0, b = d.length; c < b; ++c)
-    e = d.charCodeAt(c), e < 128 ? x[a++] = e : e < 2048 ? (x[a++] = e >> 6 | 192, x[a++] = e & 63 | 128) : (e & 64512) === 55296 && ((f = d.charCodeAt(c + 1)) & 64512) === 56320 ? (e = 65536 + ((e & 1023) << 10) + (f & 1023), ++c, x[a++] = e >> 18 | 240, x[a++] = e >> 12 & 63 | 128, x[a++] = e >> 6 & 63 | 128, x[a++] = e & 63 | 128) : (x[a++] = e >> 12 | 224, x[a++] = e >> 6 & 63 | 128, x[a++] = e & 63 | 128);
-  return x;
+function utf8Array(string) {
+  var offset = 0, c1, c2;
+  var buffer = new Array(utf8Length(string));
+  for (var i = 0, k = string.length; i < k; ++i) {
+    c1 = string.charCodeAt(i);
+    if (c1 < 128) {
+      buffer[offset++] = c1;
+    } else if (c1 < 2048) {
+      buffer[offset++] = c1 >> 6 | 192;
+      buffer[offset++] = c1 & 63 | 128;
+    } else if ((c1 & 64512) === 55296 && ((c2 = string.charCodeAt(i + 1)) & 64512) === 56320) {
+      c1 = 65536 + ((c1 & 1023) << 10) + (c2 & 1023);
+      ++i;
+      buffer[offset++] = c1 >> 18 | 240;
+      buffer[offset++] = c1 >> 12 & 63 | 128;
+      buffer[offset++] = c1 >> 6 & 63 | 128;
+      buffer[offset++] = c1 & 63 | 128;
+    } else {
+      buffer[offset++] = c1 >> 12 | 224;
+      buffer[offset++] = c1 >> 6 & 63 | 128;
+      buffer[offset++] = c1 & 63 | 128;
+    }
+  }
+  return buffer;
 }
-var m = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split(""), g = [
+var BASE64_CODE = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split("");
+var BASE64_INDEX = [
   -1,
   -1,
   -1,
@@ -302,32 +353,68 @@ var m = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".split
   -1,
   -1
 ];
-function A(d, a) {
-  var e = 0, f = [], x, c;
-  if (a <= 0 || a > d.length) throw Error("Illegal len: " + a);
-  for (; e < a; ) {
-    if (x = d[e++] & 255, f.push(m[x >> 2 & 63]), x = (x & 3) << 4, e >= a) {
-      f.push(m[x & 63]);
+function base64_encode(b, len) {
+  var off = 0, rs = [], c1, c2;
+  if (len <= 0 || len > b.length) throw Error("Illegal len: " + len);
+  while (off < len) {
+    c1 = b[off++] & 255;
+    rs.push(BASE64_CODE[c1 >> 2 & 63]);
+    c1 = (c1 & 3) << 4;
+    if (off >= len) {
+      rs.push(BASE64_CODE[c1 & 63]);
       break;
     }
-    if (c = d[e++] & 255, x |= c >> 4 & 15, f.push(m[x & 63]), x = (c & 15) << 2, e >= a) {
-      f.push(m[x & 63]);
+    c2 = b[off++] & 255;
+    c1 |= c2 >> 4 & 15;
+    rs.push(BASE64_CODE[c1 & 63]);
+    c1 = (c2 & 15) << 2;
+    if (off >= len) {
+      rs.push(BASE64_CODE[c1 & 63]);
       break;
     }
-    c = d[e++] & 255, x |= c >> 6 & 3, f.push(m[x & 63]), f.push(m[c & 63]);
+    c2 = b[off++] & 255;
+    c1 |= c2 >> 6 & 3;
+    rs.push(BASE64_CODE[c1 & 63]);
+    rs.push(BASE64_CODE[c2 & 63]);
   }
-  return f.join("");
+  return rs.join("");
 }
-function J(d, a) {
-  var e = 0, f = d.length, x = 0, c = [], b, r, t, n, o, i;
-  if (a <= 0) throw Error("Illegal len: " + a);
-  for (; e < f - 1 && x < a && (i = d.charCodeAt(e++), b = i < g.length ? g[i] : -1, i = d.charCodeAt(e++), r = i < g.length ? g[i] : -1, !(b == -1 || r == -1 || (o = b << 2 >>> 0, o |= (r & 48) >> 4, c.push(String.fromCharCode(o)), ++x >= a || e >= f) || (i = d.charCodeAt(e++), t = i < g.length ? g[i] : -1, t == -1) || (o = (r & 15) << 4 >>> 0, o |= (t & 60) >> 2, c.push(String.fromCharCode(o)), ++x >= a || e >= f))); )
-    i = d.charCodeAt(e++), n = i < g.length ? g[i] : -1, o = (t & 3) << 6 >>> 0, o |= n, c.push(String.fromCharCode(o)), ++x;
-  var p = [];
-  for (e = 0; e < x; e++) p.push(c[e].charCodeAt(0));
-  return p;
+function base64_decode(s, len) {
+  var off = 0, slen = s.length, olen = 0, rs = [], c1, c2, c3, c4, o, code;
+  if (len <= 0) throw Error("Illegal len: " + len);
+  while (off < slen - 1 && olen < len) {
+    code = s.charCodeAt(off++);
+    c1 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+    code = s.charCodeAt(off++);
+    c2 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+    if (c1 == -1 || c2 == -1) break;
+    o = c1 << 2 >>> 0;
+    o |= (c2 & 48) >> 4;
+    rs.push(String.fromCharCode(o));
+    if (++olen >= len || off >= slen) break;
+    code = s.charCodeAt(off++);
+    c3 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+    if (c3 == -1) break;
+    o = (c2 & 15) << 4 >>> 0;
+    o |= (c3 & 60) >> 2;
+    rs.push(String.fromCharCode(o));
+    if (++olen >= len || off >= slen) break;
+    code = s.charCodeAt(off++);
+    c4 = code < BASE64_INDEX.length ? BASE64_INDEX[code] : -1;
+    o = (c3 & 3) << 6 >>> 0;
+    o |= c4;
+    rs.push(String.fromCharCode(o));
+    ++olen;
+  }
+  var res = [];
+  for (off = 0; off < olen; off++) res.push(rs[off].charCodeAt(0));
+  return res;
 }
-var w = 16, j = 10, d0 = 16, b0 = 100, L = [
+var BCRYPT_SALT_LEN = 16;
+var GENSALT_DEFAULT_LOG2_ROUNDS = 10;
+var BLOWFISH_NUM_ROUNDS = 16;
+var MAX_EXECUTION_TIME = 100;
+var P_ORIG = [
   608135816,
   2242054355,
   320440878,
@@ -346,7 +433,8 @@ var w = 16, j = 10, d0 = 16, b0 = 100, L = [
   3041331479,
   2450970073,
   2306472731
-], N = [
+];
+var S_ORIG = [
   3509652390,
   2564797868,
   805139163,
@@ -1371,7 +1459,8 @@ var w = 16, j = 10, d0 = 16, b0 = 100, L = [
   3463963227,
   1469046755,
   985887462
-], q = [
+];
+var C_ORIG = [
   1332899944,
   1700884034,
   1701343084,
@@ -1379,184 +1468,340 @@ var w = 16, j = 10, d0 = 16, b0 = 100, L = [
   1668446532,
   1869963892
 ];
-function _(d, a, e, f) {
-  var x, c = d[a], b = d[a + 1];
-  return c ^= e[0], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[1], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[2], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[3], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[4], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[5], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[6], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[7], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[8], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[9], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[10], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[11], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[12], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[13], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[14], x = f[c >>> 24], x += f[256 | c >> 16 & 255], x ^= f[512 | c >> 8 & 255], x += f[768 | c & 255], b ^= x ^ e[15], x = f[b >>> 24], x += f[256 | b >> 16 & 255], x ^= f[512 | b >> 8 & 255], x += f[768 | b & 255], c ^= x ^ e[16], d[a] = b ^ e[d0 + 1], d[a + 1] = c, d;
+function _encipher(lr, off, P, S) {
+  var n, l = lr[off], r = lr[off + 1];
+  l ^= P[0];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[1];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[2];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[3];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[4];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[5];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[6];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[7];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[8];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[9];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[10];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[11];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[12];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[13];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[14];
+  n = S[l >>> 24];
+  n += S[256 | l >> 16 & 255];
+  n ^= S[512 | l >> 8 & 255];
+  n += S[768 | l & 255];
+  r ^= n ^ P[15];
+  n = S[r >>> 24];
+  n += S[256 | r >> 16 & 255];
+  n ^= S[512 | r >> 8 & 255];
+  n += S[768 | r & 255];
+  l ^= n ^ P[16];
+  lr[off] = r ^ P[BLOWFISH_NUM_ROUNDS + 1];
+  lr[off + 1] = l;
+  return lr;
 }
-function v(d, a) {
-  for (var e = 0, f = 0; e < 4; ++e)
-    f = f << 8 | d[a] & 255, a = (a + 1) % d.length;
-  return { key: f, offp: a };
+function _streamtoword(data, offp) {
+  for (var i = 0, word = 0; i < 4; ++i)
+    word = word << 8 | data[offp] & 255, offp = (offp + 1) % data.length;
+  return { key: word, offp };
 }
-function U(d, a, e) {
-  for (var f = 0, x = [0, 0], c = a.length, b = e.length, r, t = 0; t < c; t++)
-    r = v(d, f), f = r.offp, a[t] = a[t] ^ r.key;
-  for (t = 0; t < c; t += 2)
-    x = _(x, 0, a, e), a[t] = x[0], a[t + 1] = x[1];
-  for (t = 0; t < b; t += 2)
-    x = _(x, 0, a, e), e[t] = x[0], e[t + 1] = x[1];
+function _key(key, P, S) {
+  var offset = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
+  for (var i = 0; i < plen; i++)
+    sw = _streamtoword(key, offset), offset = sw.offp, P[i] = P[i] ^ sw.key;
+  for (i = 0; i < plen; i += 2)
+    lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
+  for (i = 0; i < slen; i += 2)
+    lr = _encipher(lr, 0, P, S), S[i] = lr[0], S[i + 1] = lr[1];
 }
-function t0(d, a, e, f) {
-  for (var x = 0, c = [0, 0], b = e.length, r = f.length, t, n = 0; n < b; n++)
-    t = v(a, x), x = t.offp, e[n] = e[n] ^ t.key;
-  for (x = 0, n = 0; n < b; n += 2)
-    t = v(d, x), x = t.offp, c[0] ^= t.key, t = v(d, x), x = t.offp, c[1] ^= t.key, c = _(c, 0, e, f), e[n] = c[0], e[n + 1] = c[1];
-  for (n = 0; n < r; n += 2)
-    t = v(d, x), x = t.offp, c[0] ^= t.key, t = v(d, x), x = t.offp, c[1] ^= t.key, c = _(c, 0, e, f), f[n] = c[0], f[n + 1] = c[1];
+function _ekskey(data, key, P, S) {
+  var offp = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
+  for (var i = 0; i < plen; i++)
+    sw = _streamtoword(key, offp), offp = sw.offp, P[i] = P[i] ^ sw.key;
+  offp = 0;
+  for (i = 0; i < plen; i += 2)
+    sw = _streamtoword(data, offp), offp = sw.offp, lr[0] ^= sw.key, sw = _streamtoword(data, offp), offp = sw.offp, lr[1] ^= sw.key, lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
+  for (i = 0; i < slen; i += 2)
+    sw = _streamtoword(data, offp), offp = sw.offp, lr[0] ^= sw.key, sw = _streamtoword(data, offp), offp = sw.offp, lr[1] ^= sw.key, lr = _encipher(lr, 0, P, S), S[i] = lr[0], S[i + 1] = lr[1];
 }
-function B(d, a, e, f, x) {
-  var c = q.slice(), b = c.length, r;
-  if (e < 4 || e > 31)
-    if (r = Error("Illegal number of rounds (4-31): " + e), f) {
-      h(f.bind(this, r));
+function _crypt(b, salt, rounds, callback, progressCallback) {
+  var cdata = C_ORIG.slice(), clen = cdata.length, err;
+  if (rounds < 4 || rounds > 31) {
+    err = Error("Illegal number of rounds (4-31): " + rounds);
+    if (callback) {
+      nextTick(callback.bind(this, err));
       return;
-    } else throw r;
-  if (a.length !== w)
-    if (r = Error(
-      "Illegal salt length: " + a.length + " != " + w
-    ), f) {
-      h(f.bind(this, r));
+    } else throw err;
+  }
+  if (salt.length !== BCRYPT_SALT_LEN) {
+    err = Error(
+      "Illegal salt length: " + salt.length + " != " + BCRYPT_SALT_LEN
+    );
+    if (callback) {
+      nextTick(callback.bind(this, err));
       return;
-    } else throw r;
-  e = 1 << e >>> 0;
-  var t, n, o = 0, i;
-  typeof Int32Array == "function" ? (t = new Int32Array(L), n = new Int32Array(N)) : (t = L.slice(), n = N.slice()), t0(a, d, t, n);
-  function p() {
-    if (x && x(o / e), o < e)
-      for (var y = Date.now(); o < e && (o = o + 1, U(d, t, n), U(a, t, n), !(Date.now() - y > b0)); )
-        ;
-    else {
-      for (o = 0; o < 64; o++)
-        for (i = 0; i < b >> 1; i++) _(c, i << 1, t, n);
-      var s = [];
-      for (o = 0; o < b; o++)
-        s.push((c[o] >> 24 & 255) >>> 0), s.push((c[o] >> 16 & 255) >>> 0), s.push((c[o] >> 8 & 255) >>> 0), s.push((c[o] & 255) >>> 0);
-      if (f) {
-        f(null, s);
+    } else throw err;
+  }
+  rounds = 1 << rounds >>> 0;
+  var P, S, i = 0, j;
+  if (typeof Int32Array === "function") {
+    P = new Int32Array(P_ORIG);
+    S = new Int32Array(S_ORIG);
+  } else {
+    P = P_ORIG.slice();
+    S = S_ORIG.slice();
+  }
+  _ekskey(salt, b, P, S);
+  function next() {
+    if (progressCallback) progressCallback(i / rounds);
+    if (i < rounds) {
+      var start = Date.now();
+      for (; i < rounds; ) {
+        i = i + 1;
+        _key(b, P, S);
+        _key(salt, P, S);
+        if (Date.now() - start > MAX_EXECUTION_TIME) break;
+      }
+    } else {
+      for (i = 0; i < 64; i++)
+        for (j = 0; j < clen >> 1; j++) _encipher(cdata, j << 1, P, S);
+      var ret = [];
+      for (i = 0; i < clen; i++)
+        ret.push((cdata[i] >> 24 & 255) >>> 0), ret.push((cdata[i] >> 16 & 255) >>> 0), ret.push((cdata[i] >> 8 & 255) >>> 0), ret.push((cdata[i] & 255) >>> 0);
+      if (callback) {
+        callback(null, ret);
         return;
-      } else return s;
+      } else return ret;
     }
-    f && h(p);
+    if (callback) nextTick(next);
   }
-  if (typeof f < "u")
-    p();
-  else
-    for (var I; ; ) if (typeof (I = p()) < "u") return I || [];
+  if (typeof callback !== "undefined") {
+    next();
+  } else {
+    var res;
+    while (true) if (typeof (res = next()) !== "undefined") return res || [];
+  }
 }
-function R(d, a, e, f) {
-  var x;
-  if (typeof d != "string" || typeof a != "string")
-    if (x = Error("Invalid string / salt: Not a string"), e) {
-      h(e.bind(this, x));
+function _hash(password, salt, callback, progressCallback) {
+  var err;
+  if (typeof password !== "string" || typeof salt !== "string") {
+    err = Error("Invalid string / salt: Not a string");
+    if (callback) {
+      nextTick(callback.bind(this, err));
       return;
-    } else throw x;
-  var c, b;
-  if (a.charAt(0) !== "$" || a.charAt(1) !== "2")
-    if (x = Error("Invalid salt version: " + a.substring(0, 2)), e) {
-      h(e.bind(this, x));
+    } else throw err;
+  }
+  var minor, offset;
+  if (salt.charAt(0) !== "$" || salt.charAt(1) !== "2") {
+    err = Error("Invalid salt version: " + salt.substring(0, 2));
+    if (callback) {
+      nextTick(callback.bind(this, err));
       return;
-    } else throw x;
-  if (a.charAt(2) === "$") c = "\0", b = 3;
+    } else throw err;
+  }
+  if (salt.charAt(2) === "$") minor = String.fromCharCode(0), offset = 3;
   else {
-    if (c = a.charAt(2), c !== "a" && c !== "b" && c !== "y" || a.charAt(3) !== "$")
-      if (x = Error("Invalid salt revision: " + a.substring(2, 4)), e) {
-        h(e.bind(this, x));
+    minor = salt.charAt(2);
+    if (minor !== "a" && minor !== "b" && minor !== "y" || salt.charAt(3) !== "$") {
+      err = Error("Invalid salt revision: " + salt.substring(2, 4));
+      if (callback) {
+        nextTick(callback.bind(this, err));
         return;
-      } else throw x;
-    b = 4;
+      } else throw err;
+    }
+    offset = 4;
   }
-  if (a.charAt(b + 2) > "$")
-    if (x = Error("Missing salt rounds"), e) {
-      h(e.bind(this, x));
+  if (salt.charAt(offset + 2) > "$") {
+    err = Error("Missing salt rounds");
+    if (callback) {
+      nextTick(callback.bind(this, err));
       return;
-    } else throw x;
-  var r = parseInt(a.substring(b, b + 1), 10) * 10, t = parseInt(a.substring(b + 1, b + 2), 10), n = r + t, o = a.substring(b + 3, b + 25);
-  d += c >= "a" ? "\0" : "";
-  var i = c0(d), p = J(o, w);
-  function I(y) {
-    var s = [];
-    return s.push("$2"), c >= "a" && s.push(c), s.push("$"), n < 10 && s.push("0"), s.push(n.toString()), s.push("$"), s.push(A(p, p.length)), s.push(A(y, q.length * 4 - 1)), s.join("");
+    } else throw err;
   }
-  if (typeof e > "u")
-    return I(B(i, p, n));
-  B(
-    i,
-    p,
-    n,
-    function(y, s) {
-      y ? e(y, null) : e(null, I(s));
-    },
-    f
-  );
+  var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r2 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r2, real_salt = salt.substring(offset + 3, offset + 25);
+  password += minor >= "a" ? "\0" : "";
+  var passwordb = utf8Array(password), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
+  function finish(bytes) {
+    var res = [];
+    res.push("$2");
+    if (minor >= "a") res.push(minor);
+    res.push("$");
+    if (rounds < 10) res.push("0");
+    res.push(rounds.toString());
+    res.push("$");
+    res.push(base64_encode(saltb, saltb.length));
+    res.push(base64_encode(bytes, C_ORIG.length * 4 - 1));
+    return res.join("");
+  }
+  if (typeof callback == "undefined")
+    return finish(_crypt(passwordb, saltb, rounds));
+  else {
+    _crypt(
+      passwordb,
+      saltb,
+      rounds,
+      function(err2, bytes) {
+        if (err2) callback(err2, null);
+        else callback(null, finish(bytes));
+      },
+      progressCallback
+    );
+  }
 }
-function r0(d, a) {
-  return A(d, a);
+function encodeBase64(bytes, length) {
+  return base64_encode(bytes, length);
 }
-function n0(d, a) {
-  return J(d, a);
+function decodeBase64(string, length) {
+  return base64_decode(string, length);
 }
-const T = {
-  setRandomFallback: k,
-  genSaltSync: O,
-  genSalt: W,
-  hashSync: G,
-  hash: V,
-  compareSync: S,
-  compare: x0,
-  getRounds: e0,
-  getSalt: f0,
-  truncates: a0,
-  encodeBase64: r0,
-  decodeBase64: n0
-}, Y = l.dirname(Q(import.meta.url));
-process.env.APP_ROOT = l.join(Y, "..");
-const D = process.env.VITE_DEV_SERVER_URL, h0 = l.join(process.env.APP_ROOT, "dist-electron"), z = l.join(process.env.APP_ROOT, "dist");
-process.env.VITE_PUBLIC = D ? l.join(process.env.APP_ROOT, "public") : z;
-let u;
-function K() {
-  u = new $({
-    icon: l.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+const bcrypt = {
+  setRandomFallback,
+  genSaltSync,
+  genSalt,
+  hashSync,
+  hash,
+  compareSync,
+  compare,
+  getRounds,
+  getSalt,
+  truncates,
+  encodeBase64,
+  decodeBase64
+};
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+process.env.APP_ROOT = path.join(__dirname, "..");
+const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
+const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
+let win;
+function createWindow() {
+  win = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, "logo_icon.png"),
     minWidth: 500,
     minHeight: 400,
     webPreferences: {
-      preload: l.join(Y, "preload.mjs")
+      preload: path.join(__dirname, "preload.mjs")
     }
-  }), u.setMenu(null), u.webContents.openDevTools(), u.webContents.on("did-finish-load", () => {
-    u == null || u.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-  }), D ? u.loadURL(D) : u.loadFile(l.join(z, "index.html"));
+  });
+  const webContents = win.webContents;
+  webContents.openDevTools();
+  win.webContents.on("did-finish-load", () => {
+    win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  });
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
+  } else {
+    win.loadFile(path.join(RENDERER_DIST, "index.html"));
+  }
 }
-F.handle("register-data", async (d, a) => {
-  const e = await T.genSalt(9), f = await T.hash(a.password, e), x = { name: a.name, email: a.email, password: f, phone: a.phone }, c = l.join(E.getPath("userData"), "userData.json");
-  if (console.log(c), c)
+ipcMain.handle("register-data", async (_, data) => {
+  const salt = await bcrypt.genSalt(9);
+  const hashpassword = await bcrypt.hash(data.password, salt);
+  const registerData = { name: data.name, email: data.email, password: hashpassword, phone: data.phone };
+  const filePath = path.join(app.getPath("userData"), "userData.json");
+  console.log(filePath);
+  if (filePath) {
     try {
-      return M.writeFileSync(c, JSON.stringify(x, null, 2), "utf-8"), { success: !0, message: "Data saved successfully!", path: c };
-    } catch (b) {
-      return { success: !1, message: "Error saving data", error: b };
+      fs.writeFileSync(filePath, JSON.stringify(registerData, null, 2), "utf-8");
+      return { success: true, message: "Data saved successfully!", path: filePath };
+    } catch (error) {
+      return { success: false, message: "Error saving data", error };
     }
-  else
-    return { success: !1, message: "File save canceled" };
+  } else {
+    return { success: false, message: "File save canceled" };
+  }
 });
-F.handle("login-data", async (d, a) => {
-  const e = l.join(E.getPath("userData"), "userData.json");
-  if (e)
+ipcMain.handle("login-data", async (_, data) => {
+  const filePath = path.join(app.getPath("userData"), "userData.json");
+  if (filePath) {
     try {
-      const f = M.readFileSync(e, "utf-8"), x = a.email, c = a.password, { email: b, password: r } = JSON.parse(f);
-      return await T.compare(c, r) && x == b ? u == null ? void 0 : u.webContents.send("isAuthenticated", !0) : u == null ? void 0 : u.webContents.send("isAuthenticated", !1);
-    } catch (f) {
-      return { success: !1, message: "Error saving data", error: f };
+      const storedData = fs.readFileSync(filePath, "utf-8");
+      const userEmail = data.email;
+      const userPassword = data.password;
+      const { email, password } = JSON.parse(storedData);
+      const ispasswordmatch = await bcrypt.compare(userPassword, password);
+      if (ispasswordmatch && userEmail == email) {
+        return win == null ? void 0 : win.webContents.send("isAuthenticated", true);
+      } else {
+        return win == null ? void 0 : win.webContents.send("isAuthenticated", false);
+      }
+    } catch (error) {
+      return { success: false, message: "Error saving data", error };
     }
-  else
-    return { success: !1, message: "File save canceled" };
+  } else {
+    return { success: false, message: "File save canceled" };
+  }
 });
-E.on("window-all-closed", () => {
-  process.platform !== "darwin" && (E.quit(), u = null);
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+    win = null;
+  }
 });
-E.on("activate", () => {
-  $.getAllWindows().length === 0 && K();
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });
-E.whenReady().then(K);
+app.whenReady().then(createWindow);
 export {
-  h0 as MAIN_DIST,
-  z as RENDERER_DIST,
-  D as VITE_DEV_SERVER_URL
+  MAIN_DIST,
+  RENDERER_DIST,
+  VITE_DEV_SERVER_URL
 };

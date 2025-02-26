@@ -1,1 +1,8 @@
-"use strict";const r=require("electron");r.contextBridge.exposeInMainWorld("electronAPI",{onRegisterData:e=>r.ipcRenderer.invoke("register-data",e),onLoginData:e=>r.ipcRenderer.invoke("login-data",e),isAuthenticated:e=>r.ipcRenderer.once("isAuthenticated",(t,n)=>e(n)),removeListener:e=>r.ipcRenderer.removeAllListeners(e)});
+"use strict";
+const electron = require("electron");
+electron.contextBridge.exposeInMainWorld("electronAPI", {
+  onRegisterData: (data) => electron.ipcRenderer.invoke("register-data", data),
+  onLoginData: (data) => electron.ipcRenderer.invoke("login-data", data),
+  isAuthenticated: (cb) => electron.ipcRenderer.once("isAuthenticated", (_, state) => cb(state)),
+  removeListener: (channel) => electron.ipcRenderer.removeAllListeners(channel)
+});

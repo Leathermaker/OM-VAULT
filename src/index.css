@@ -15,3 +15,13 @@ body::-webkit-scrollbar {
     scrollbar-width: none;  /* Firefox */
   }
   
+
+  .hide-scb::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .hide-scb {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
