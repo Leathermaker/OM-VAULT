@@ -5,12 +5,12 @@ type Store = {
   setShowForm: () => void
 } 
 
-const useStore = create<Store>()((set) => ({
+const useFormStore = create<Store>()((set) => ({
   showForm: false,
   setShowForm: () => set((state) =>({showForm : !state.showForm})),
 }))
 
 
 export {
-    useStore
+    useFormStore
 }

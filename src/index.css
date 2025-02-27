@@ -30,3 +30,19 @@ body::-webkit-scrollbar {
   .heading-text {
       font-size: 2rem;
   }
+
+  .btnColor{
+    background-color: blueviolet;
+  }
+
+
+  input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
