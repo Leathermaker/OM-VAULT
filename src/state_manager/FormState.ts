@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 
 type Store = {
-  count: number
-  inc: () => void
-}
+  showForm: boolean
+  setShowForm: () => void
+} 
 
 const useStore = create<Store>()((set) => ({
-  count: 1,
-  inc: () => set((state) => ({ count: state.count + 1 })),
+  showForm: false,
+  setShowForm: () => set((state) =>({showForm : !state.showForm})),
 }))
 
 
