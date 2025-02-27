@@ -5,8 +5,10 @@ import { Sidebar } from "../components";
 const UserLayout: React.FC = () => {
   return (
     <div className="h-screen  w-full flex ">
-        <Sidebar/>
-      <Outlet />
+      <Sidebar />
+      <div className=" p-6 md:p-12 w-full h-full">
+        <Outlet />
+      </div>
     </div>
   );
 };

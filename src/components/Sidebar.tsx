@@ -46,7 +46,7 @@ const Sidebar: React.FC = () => {
     },
   ];
   return (
-    <motion.div className="md:w-[12rem] w-[8rem] h-full text-sm text-white bg-zinc-900 p-4 border-r border-r-zinc-800 overflow-hidden ">
+    <motion.div className="md:w-[12rem] w-[8rem] h-full text-sm text-white bg-zinc-900 p-4 border-r border-r-zinc-800 overflow-hidden select-none">
       <img src={Logo} alt="OM VAULT" className=" mx-auto opacity-80" />
       <div className="mt-12 h-[80%] w-full  overflow-y-scroll hide-scb  ">
         <div className="w-full bg-zinc-800 pe-2 rounded">
@@ -56,7 +56,7 @@ const Sidebar: React.FC = () => {
           <Link
           to={option.screen}
           key={option.name}
-          className="p-2 hover:bg-zinc-800 cursor-pointer mt-2 rounded-md flex"
+          className="p-2 hover:bg-zinc-800 cursor-pointer mt-2 rounded-md flex select-none"
           >
             {option.name}
           </Link>

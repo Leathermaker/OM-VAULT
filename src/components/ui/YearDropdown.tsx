@@ -16,10 +16,10 @@ const YearDropdown = () => {
   };
 
   return (
-    <div className="relative w-full   ">
+    <div className="relative w-full  select-none  ">
       <button
         onClick={toggleDropdown}
-        className=" bg-transparent flex justify-between items-center bg-gray-200 text-black md:p-2 p-1 w-full  rounded-lg shadow-sm text-white md:text-sm text-xs"
+        className=" bg-transparent flex justify-between items-center md:p-2 p-1 w-full  rounded-lg shadow-sm text-white md:text-sm text-xs"
       >
         {selectedYear}
         {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -33,7 +33,7 @@ const YearDropdown = () => {
           {years.map((year) => (
             <li
               key={year}
-              className="px-4 py-2 hover:bg-white/5  cursor-pointer text-white "
+              className="px-4 py-2 hover:bg-white/5  cursor-pointer text-white select-none"
               onClick={() => handleSelect(year)}
             >
               {year}
