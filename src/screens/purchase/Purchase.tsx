@@ -1,8 +1,9 @@
 import React from "react";
 import { FaPlus } from "react-icons/fa6";
 import { motion } from "motion/react";
-import PurchaseForm from "./PurchaseForm";
+import PurchaseForm from "./components/PurchaseForm";
 import { useFormStore } from "../../state_manager/FormState";
+import PurchasesTable from "./components/PurchasesTable";
 
 const Purchase: React.FC = () => {
   const { showForm, setShowForm } = useFormStore();
@@ -20,13 +21,16 @@ const Purchase: React.FC = () => {
       </div>
 
       {showForm && (
-        <div className="absolute  hide-scb w-full h-screen overflow-y-scroll p-12 top-0  mx-auto bg-zinc-800/50 backdrop-blur-sm left-0">
+        <div className="absolute  hide-scb w-full h-screen overflow-y-scroll p-12 top-0  mx-auto bg-zinc-800/50 backdrop-blur-xl left-0">
           <div className="lg:w-1/2 md:w-8/12  mx-auto">
             <PurchaseForm />
           </div>
         </div>
       )}
-    </div>
+      <div className="h-[calc(100vh-96px)]  hide-scb overflow-y-scroll">
+       <PurchasesTable/>
+      </div>
+    </div>  
   );
 };
 

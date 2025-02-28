@@ -1753,13 +1753,72 @@ function createWindow() {
 ipcMain.handle("register-data", async (_, data) => {
   const salt = await bcrypt.genSalt(9);
   const hashpassword = await bcrypt.hash(data.password, salt);
-  const registerData = { name: data.name, email: data.email, password: hashpassword, phone: data.phone };
+  const registerData = {
+    name: data.name,
+    email: data.email,
+    password: hashpassword,
+    phone: data.phone
+  };
   const filePath = path.join(app.getPath("userData"), "userData.json");
   console.log(filePath);
   if (filePath) {
     try {
-      fs.writeFileSync(filePath, JSON.stringify(registerData, null, 2), "utf-8");
-      return { success: true, message: "Data saved successfully!", path: filePath };
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify(registerData, null, 2),
+        "utf-8"
+      );
+      return {
+        success: true,
+        message: "Data saved successfully!",
+        path: filePath
+      };
+    } catch (error) {
+      return { success: false, message: "Error saving data", error };
+    }
+  } else {
+    return { success: false, message: "File save canceled" };
+  }
+});
+const readDataFromFile = (filePath) => {
+  try {
+    const rawData = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(rawData);
+  } catch (error) {
+    return [];
+  }
+};
+ipcMain.handle("get-purchase-data", async () => {
+  const filePath = path.join(app.getPath("userData"), "purchaseData.json");
+  console.log(filePath);
+  if (filePath) {
+    try {
+      const purchaseData = readDataFromFile(filePath);
+      return purchaseData;
+    } catch (error) {
+      return [];
+    }
+  } else {
+    return { success: false, message: "File save canceled" };
+  }
+});
+ipcMain.handle("purchase-data", async (_, data) => {
+  const filePath = path.join(app.getPath("userData"), "purchaseData.json");
+  console.log(filePath);
+  if (filePath) {
+    const existingPurchaseData = readDataFromFile(filePath);
+    const newPurchaseData = [...existingPurchaseData, data];
+    try {
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify(newPurchaseData, null, 2),
+        "utf-8"
+      );
+      return {
+        success: true,
+        message: "purchase data saved successfully!",
+        path: filePath
+      };
     } catch (error) {
       return { success: false, message: "Error saving data", error };
     }

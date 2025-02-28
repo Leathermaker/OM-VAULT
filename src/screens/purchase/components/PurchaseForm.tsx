@@ -1,35 +1,15 @@
 import React, { useState } from "react";
-import { Input } from "../../components/ui";
+import { Input } from "../../../components/ui";
 import { motion } from "framer-motion";
 import { FaPlus } from "react-icons/fa6";
-import Button from "../../components/ui/Button";
-import { useFormStore } from "../../state_manager/FormState";
+import Button from "../../../components/ui/Button";
+import { useFormStore } from "../../../state_manager/FormState";
 import { RxCross2 } from "react-icons/rx";
-
-type InstallmentType = {
-  date: string;
-  rate: number | null;
-};
-
-type PurchaseDataType = {
-  productName: string;
-  price: number | null;
-  quantity: number | null;
-  discount: number | null;
-  tax: number | null;
-  supplier: string;
-  supplierContact: string;
-  supplierEmail: string;
-  supplierAddress: string;
-  shippingAddress: string;
-  paymentStatus: string;
-  paymentMethod: string;
-  orderingDate: string;
-  installments: InstallmentType[];
-};
+import { PurchaseDataType } from "../../../types/types";
+import { calculateTotalPrice } from "../../../libs/utilityFunc";
 
 const PurchaseForm: React.FC = () => {
-  const {  setShowForm } = useFormStore();
+  const { setShowForm } = useFormStore();
   const [purchaseData, setPurchaseData] = useState<PurchaseDataType>({
     productName: "",
     price: 0,
@@ -44,7 +24,8 @@ const PurchaseForm: React.FC = () => {
     paymentStatus: "null",
     paymentMethod: "null",
     orderingDate: "",
-    installments: [{ date: new Date().toISOString().split("T")[0], rate: 0 }]
+    installments: [{ date: new Date().toISOString().split("T")[0], rate: 0 }],
+    totalPrice: 0,
   });
 
   const handleChange = (
@@ -73,12 +54,31 @@ const PurchaseForm: React.FC = () => {
       ...prev,
       installments: [
         ...prev.installments,
-        { date: new Date().toISOString().split("T")[0], rate: 0 }
-      ]
+        { date: new Date().toISOString().split("T")[0], rate: 0 },
+      ],
     }));
   };
 
-  React.useEffect(() => {}, []);
+  const submitHandler = async () => {
+    await window.electronAPI.onPurchaseData(purchaseData);
+  };
+
+  React.useEffect(() => {
+    // Calculate the total price based on the price and quantity
+    const calculatedTotalPrice = calculateTotalPrice(
+      purchaseData.price,
+      purchaseData.tax,
+      purchaseData.discount,
+      purchaseData.quantity
+    );
+
+    setPurchaseData((prev) => ({ ...prev,  totalPrice : calculatedTotalPrice  }));
+  }, [
+    purchaseData.price,
+    purchaseData.quantity,
+    purchaseData.tax,
+    purchaseData.discount,
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -103,47 +103,70 @@ const PurchaseForm: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Input
           name="price"
-          value={(purchaseData.price != 0 ? purchaseData.price : "")as string | number}
+          value={
+            (purchaseData.price != 0 ? purchaseData.price : "") as
+              | string
+              | number
+          }
           onChange={handleChange}
           label="Price"
           type="number"
         />
         <Input
           name="quantity"
-          value={(purchaseData.quantity != 0 ? purchaseData.quantity : "")as string | number}
+          value={
+            (purchaseData.quantity != 0 ? purchaseData.quantity : "") as
+              | string
+              | number
+          }
           onChange={handleChange}
           label="Quantity"
           type="number"
         />
         <Input
           name="discount"
-          value={(purchaseData.discount != 0 ? purchaseData.discount : "")as string | number}
+          value={
+            (purchaseData.discount != 0 ? purchaseData.discount : "") as
+              | string
+              | number
+          }
           onChange={handleChange}
           label="Discount%"
           type="number"
         />
         <Input
           name="tax"
-          value={(purchaseData.tax != 0 ? purchaseData.tax : "")as string | number}
+          value={
+            (purchaseData.tax != 0 ? purchaseData.tax : "") as string | number
+          }
           onChange={handleChange}
           label="Tax"
           type="number"
         />
       </div>
-
-      <Input
-        name="supplier"
-        value={purchaseData.supplier}
-        onChange={handleChange}
-        label="Supplier"
-        type="text"
-      />
+      <div className="flex gap-2">
+        <Input
+          name="supplier"
+          value={purchaseData.supplier}
+          onChange={handleChange}
+          label="Supplier"
+          type="text"
+        />
+        <Input
+          name="orderingDate"
+          value={purchaseData.orderingDate}
+          onChange={handleChange}
+          label="Ordering Date"
+          type="date"
+          style=""
+        />
+      </div>
       <div className="flex gap-2 w-full">
         <Input
           name="supplierContact"
           value={purchaseData.supplierContact}
           onChange={handleChange}
-          label="Supplier Contact Number"
+          label="Supplier Ph. Number"
           type="text"
           placeholder="Enter Phone Number"
           style="w-full"
@@ -185,7 +208,7 @@ const PurchaseForm: React.FC = () => {
             name="paymentStatus"
             value={purchaseData.paymentStatus}
             onChange={handleChange}
-            className="w-full"
+            className="w-full bg-zinc-800 focus:outline-none"
           >
             <option value="null">Null</option>
             <option value="done">Done</option>
@@ -197,7 +220,7 @@ const PurchaseForm: React.FC = () => {
             name="paymentMethod"
             value={purchaseData.paymentMethod}
             onChange={handleChange}
-            className="w-full"
+            className="w-full bg-zinc-800 focus:outline-none"
           >
             <option value="null">Credit</option>
             <option value="cash">Cash</option>
@@ -206,14 +229,7 @@ const PurchaseForm: React.FC = () => {
           </select>
         </div>
       </div>
-      <Input
-        name="orderingDate"
-        value={purchaseData.orderingDate}
-        onChange={handleChange}
-        label="Ordering Date"
-        type="date"
-        style=""
-      />
+
       <div className="flex flex-col items-end mb-4">
         <div className="w-full flex justify-between items-center">
           <p>Installments</p>
@@ -229,7 +245,7 @@ const PurchaseForm: React.FC = () => {
         {purchaseData.installments.map((inst, index) => (
           <div className="w-full my-2" key={index}>
             <Input
-              value={(inst.rate != 0 ? inst.rate : "")as string | number}
+              value={(inst.rate != 0 ? inst.rate : "") as string | number}
               type="number"
               onChange={(e) =>
                 handleInstallmentChange(index, Number(e.target.value))
@@ -239,7 +255,20 @@ const PurchaseForm: React.FC = () => {
           </div>
         ))}
       </div>
-      <Button onPress={()=>{console.log(purchaseData)}} label="Create" />
+      <Input
+        name="supplierContact"
+        value={
+          (purchaseData.totalPrice != 0 ? purchaseData.totalPrice : "") as
+            | string
+            | number
+        }
+        onChange={handleChange}
+        label="Total Price"
+        type="number"
+        placeholder="Total Price will calculated here"
+        style="w-full"
+      />
+      <Button onPress={submitHandler} label="Create" />
     </div>
   );
 };
