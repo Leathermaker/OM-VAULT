@@ -27,7 +27,7 @@ const PurchasesTable: React.FC = () => {
 
   return (
     <div>
-      <Table tableHeadings={tableHeadings} tableBody={purchaseData} />
+      <Table tableHeadings={tableHeadings} tableBody={purchaseData}  />
     </div>
   );
 };

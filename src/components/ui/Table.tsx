@@ -1,5 +1,9 @@
 import React from "react";
 import { TableHeadingsTypes } from "../../types/types";
+import { IoEllipsisHorizontalSharp } from "react-icons/io5";
+
+
+
 type TableProps = {
   tableHeadings: TableHeadingsTypes[];
   tableBody: any[];
@@ -12,9 +16,10 @@ const Table: React.FC<TableProps> = ({ tableHeadings, tableBody }) => {
           <tr>
             {tableHeadings.map((heading, index) => (
               <th key={index} className="ps-2 py-2">
-                {heading.label} 
+                {heading.label}
               </th>
             ))}
+            <th>Action</th>
           </tr>
         </thead>
         <tbody className="bg-zinc-800">
@@ -26,6 +31,7 @@ const Table: React.FC<TableProps> = ({ tableHeadings, tableBody }) => {
                   {/* Dynamically render the data for each column */}
                 </td>
               ))}
+              <tr className="mx-auto"> <IoEllipsisHorizontalSharp /></tr>
             </tr>
           ))}
         </tbody>

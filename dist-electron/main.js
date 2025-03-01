@@ -1733,8 +1733,8 @@ let win;
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "logo_icon.png"),
-    minWidth: 500,
-    minHeight: 400,
+    minWidth: 900,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs")
     }
